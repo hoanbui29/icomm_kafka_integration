@@ -7,6 +7,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/lib/pq"
 	"github.com/rabbitmq/amqp091-go"
 	"icomm/kafkaintegration/models"
@@ -19,6 +20,9 @@ import (
 )
 
 func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
 	db := initDb()
 	esClient := initESClient()
 	mqChan := initRabbitMQ()

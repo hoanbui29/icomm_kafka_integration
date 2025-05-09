@@ -6,6 +6,7 @@ require (
 	github.com/confluentinc/confluent-kafka-go v1.9.2
 	github.com/elastic/go-elasticsearch/v8 v8.18.0
 	github.com/google/uuid v1.3.0
+	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	github.com/rabbitmq/amqp091-go v1.10.0
 )
