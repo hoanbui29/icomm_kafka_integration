@@ -125,7 +125,7 @@ func processData(db *sql.DB, esClient *elasticsearch.TypedClient, mqChan *amqp09
 		log.Fatalf("Error marshalling request: %v", err)
 	}
 
-	err = mqChan.PublishWithContext(context.Background(), "", "process-ocr-requests", false, false, amqp091.Publishing{
+	err = mqChan.PublishWithContext(context.Background(), "", "process-ocr-requests-priority", false, false, amqp091.Publishing{
 		ContentType: "application/json",
 		Body:        reqBytes,
 	})
