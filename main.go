@@ -1,15 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/google/uuid"
-	"github.com/joho/godotenv"
-	"github.com/lib/pq"
-	"github.com/rabbitmq/amqp091-go"
 	"icomm/kafkaintegration/models"
 	"log"
 	"os"
@@ -17,6 +12,13 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	"github.com/lib/pq"
+	"github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
@@ -87,7 +89,7 @@ func main() {
 	}
 }
 
-func processData(db *sql.DB, esClient *elasticsearch.TypedClient, mqChan *amqp091.Channel, data *models.ReceivedMessage) {
+func processData(db *sql.DB, esClient *elasticsearch.Client, mqChan *amqp091.Channel, data *models.ReceivedMessage) {
 	doc, isExisted := saveDoc(db, esClient, data)
 	if isExisted {
 		return
@@ -136,7 +138,7 @@ func processData(db *sql.DB, esClient *elasticsearch.TypedClient, mqChan *amqp09
 }
 
 // Insert into postgres, return true if data already exists, else false
-func saveDoc(db *sql.DB, esClient *elasticsearch.TypedClient, data *models.ReceivedMessage) (*models.Document, bool) {
+func saveDoc(db *sql.DB, esClient *elasticsearch.Client, data *models.ReceivedMessage) (*models.Document, bool) {
 	createdTime := time.Now()
 	systemKeyId := os.Getenv("SYSTEM_KEY_ID")
 
@@ -300,9 +302,25 @@ func saveDoc(db *sql.DB, esClient *elasticsearch.TypedClient, data *models.Recei
 		InputFileURLs:                []string{},
 	}
 
-	_, err = esClient.Index("icocr.staging.document").Document(document).Id(document.ID).Do(context.TODO())
+	// Index into Elasticsearch using the normal client
+	docBytes, err := json.Marshal(document)
 	if err != nil {
-		log.Fatalf("Error indexing document: %s", err)
+		log.Fatalf("Failed to marshal document to JSON: %v", err)
+	}
+
+	res, err := esClient.Index(
+		"icocr.staging.document",
+		bytes.NewReader(docBytes),
+		esClient.Index.WithDocumentID(document.ID),
+		esClient.Index.WithContext(context.Background()),
+	)
+	if err != nil {
+		log.Fatalf("Error indexing document into Elasticsearch: %v", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		log.Fatalf("Elasticsearch indexing failed: %s", res.String())
 	}
 
 	return &document, false
@@ -327,10 +345,10 @@ func initDb() *sql.DB {
 	return db
 }
 
-func initESClient() *elasticsearch.TypedClient {
+func initESClient() *elasticsearch.Client {
 	addresses := strings.Split(os.Getenv("ES_ADDRESSES"), ",")
 	// Initialize your Elasticsearch client here
-	client, err := elasticsearch.NewTypedClient(elasticsearch.Config{
+	client, err := elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: addresses,
 		Username:  os.Getenv("ES_USERNAME"),
 		Password:  os.Getenv("ES_PASSWORD"),
